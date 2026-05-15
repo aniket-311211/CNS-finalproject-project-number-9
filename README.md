@@ -27,7 +27,7 @@ A secure file sharing application built entirely from scratch in Python. This pr
 - **Diffie-Hellman Key Exchange** — Secure key agreement over an insecure channel using a 1024-bit safe prime (RFC 2409)
 - **No Cryptographic Libraries** — Every algorithm is implemented from first principles
 - **TCP Socket Communication** — Custom binary protocol for reliable file transfer
-- **Dark-Themed GUI** — Modern Tkinter interface with real-time logging and progress tracking
+- **Web GUI (CloudDrop)** — Clean, modern Flask-based browser interface with real-time logging and progress tracking
 - **Performance Metrics** — Measures encryption time, key exchange time, transfer speed, and file sizes
 - **Integrity Verification** — Validates that decrypted file matches the original size
 - **LAN Support** — Works on both localhost and across local network
@@ -38,11 +38,11 @@ A secure file sharing application built entirely from scratch in Python. This pr
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                  app.py (GUI Layer)                  │
-│         SecureFileShareApp — Tkinter Dark Theme      │
+│              app.py (Web GUI Layer — Flask)           │
+│         CloudDrop UI — Browser-based Interface        │
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────┐  │
-│  │  Host Mode   │  │ Connect Mode │  │   Logs    │  │
-│  │  (Sender)    │  │  (Receiver)  │  │  Metrics  │  │
+│  │  Transfer    │  │   Receive    │  │    Log    │  │
+│  │  (Send File) │  │ (Get File)   │  │  Metrics  │  │
 │  └──────┬───────┘  └──────┬───────┘  └───────────┘  │
 └─────────┼─────────────────┼─────────────────────────┘
           │                 │
@@ -75,7 +75,7 @@ A secure file sharing application built entirely from scratch in Python. This pr
 | Encryption | DES (implemented from scratch) |
 | Key Exchange | Diffie-Hellman (implemented from scratch) |
 | Networking | Python `socket` (TCP) |
-| GUI | Tkinter with custom dark theme |
+| GUI | Flask (web-based, CloudDrop design with Manrope font) |
 | Hashing | SHA-256 (for DES key derivation) |
 
 ---
@@ -84,7 +84,8 @@ A secure file sharing application built entirely from scratch in Python. This pr
 
 ```
 CNS Final Project/
-├── app.py              # Main GUI application (Tkinter)
+├── app.py              # Flask web GUI (CloudDrop design)
+├── test_e2e.py         # End-to-end integration tests
 ├── des.py              # Full DES algorithm from scratch
 ├── diffie_hellman.py   # Diffie-Hellman key exchange
 ├── network.py          # TCP socket networking (Host/Client)
@@ -137,8 +138,7 @@ Each message follows: `[1 byte type][4 bytes length][payload]`
 ### Prerequisites
 
 - Python 3.6 or higher
-- Tkinter (included with Python on most systems)
-- No external dependencies required!
+- Flask (`pip3 install flask`)
 
 ### Running the Application
 
@@ -146,23 +146,25 @@ Each message follows: `[1 byte type][4 bytes length][payload]`
 # Navigate to project directory
 cd "CNS Final Project"
 
-# Launch the GUI
+# Launch the web GUI (opens in browser at http://localhost:8080)
 python3 app.py
 ```
 
-### Sending a File (Host Mode)
+### Sending a File (Transfer Tab)
 
-1. Select **"Host (Send File)"** mode
-2. Click **"Browse"** and select a file
-3. Click **"▶ START"** — the server will start listening
-4. Share your IP address with the receiver
+1. Open `http://localhost:8080` in your browser
+2. Stay on the **Transfer** tab
+3. Click the file drop zone and select a file
+4. Note the displayed **IP address** — share it with the receiver
+5. Click **"Start transfer"** — the server will start listening
 
-### Receiving a File (Connect Mode)
+### Receiving a File (Receive Tab)
 
-1. Select **"Connect (Receive File)"** mode
-2. Enter the host's **IP address**
-3. Optionally change the save directory
-4. Click **"▶ START"** to connect and receive
+1. Open a **second terminal** and run `python3 app.py` (on a different port if same machine)
+2. Click the **Receive** tab
+3. Enter the host's **IP address** and **port**
+4. Click **"Start Transfer"** to connect and receive
+5. File is saved to `~/Downloads` with a confirmation popup
 
 ### Self-Tests
 
@@ -215,17 +217,29 @@ Complete DES implementation with:
 | **Timeout** | 60-second socket timeout |
 | **Threading** | Non-blocking operations for GUI responsiveness |
 
-### `app.py` — GUI Application (405 lines)
+### `app.py` — Flask Web GUI (CloudDrop Design)
 
 | Component | Description |
 |-----------|------------|
-| **Theme** | Custom dark color scheme (13 colors) |
-| **Mode Selection** | Radio buttons for Host/Connect |
-| **Connection** | IP and Port entry fields |
-| **File Selection** | File browser dialog with size display |
-| **Progress Bar** | Real-time transfer progress |
-| **Log Panel** | Timestamped, color-coded event log |
+| **Framework** | Flask with inline HTML/CSS/JS |
+| **Design** | CloudDrop — Manrope font, light theme, blue accent (#0066FF) |
+| **Tabs** | Transfer (send) / Receive / Log — tab-based navigation |
+| **File Upload** | Browser file picker with drag-drop styled zone |
+| **IP Display** | Shows host IP prominently for easy sharing |
+| **Progress** | Real-time progress bar via API polling (500ms) |
+| **Log** | Color-coded, timestamped activity log |
 | **Metrics** | Encryption time, transfer speed, file sizes |
+| **Confirmation** | Success message with file details on completion |
+
+### `test_e2e.py` — Integration Tests
+
+| Test | What It Verifies |
+|------|------------------|
+| **DH Key Exchange** | Both parties derive the same shared DES key |
+| **DES Small Data** | Encrypt → decrypt roundtrip on text |
+| **DES Binary Data** | Encrypt → decrypt roundtrip on 1 KB binary |
+| **Hex Encoding** | DH public key survives hex encode/decode (wire format) |
+| **Full Pipeline** | DH → DES encrypt → simulated transfer → DES decrypt → verify |
 
 ---
 
