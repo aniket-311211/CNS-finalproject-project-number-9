@@ -25,7 +25,11 @@ state = {
 lock = threading.Lock()
 
 try:
-    LOCAL_IP = socket.gethostbyname(socket.gethostname())
+    # Reliable IP detection — works on WiFi, hotspot, LAN
+    _s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    _s.connect(('8.8.8.8', 80))  # doesn't actually send data
+    LOCAL_IP = _s.getsockname()[0]
+    _s.close()
 except:
     LOCAL_IP = "127.0.0.1"
 
@@ -356,8 +360,19 @@ function startPolling() {
     box.scrollTop = box.scrollHeight;
     // Result
     if (d.result) {
+      let dlBtn = '';
+      if (d.result.download_url) {
+        dlBtn = `<br><a href="${d.result.download_url}" class="btn-dl" style="display:inline-block;margin-top:10px;padding:10px 24px;font-size:14px;">⬇ Download to this device</a>`;
+        // Auto-trigger download on phone/remote browser
+        const a = document.createElement('a');
+        a.href = d.result.download_url;
+        a.download = '';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
       document.getElementById('result-area').innerHTML =
-        `<div class="result-box"><h2>✅ ${d.result.title}</h2><p>${d.result.detail}</p></div>`;
+        `<div class="result-box"><h2>✅ ${d.result.title}</h2><p>${d.result.detail}${dlBtn}</p></div>`;
       clearInterval(polling);
       document.getElementById('send-btn').disabled = false;
       document.getElementById('send-btn').textContent = 'Start transfer';
@@ -453,8 +468,10 @@ def api_send():
     if not f:
         return jsonify({'error': 'No file'}), 400
 
-    # Save uploaded file temporarily
-    tmp = os.path.join('/tmp', f.filename)
+    # Save uploaded file to a stable location (not /tmp — macOS can clean it)
+    upload_dir = CLOUD_DIR / '.uploads'
+    upload_dir.mkdir(exist_ok=True)
+    tmp = str(upload_dir / f.filename)
     f.save(tmp)
 
     with lock:
@@ -481,7 +498,7 @@ def api_recv():
         state['status'] = 'running'
         state['result'] = None
 
-    save_dir = os.path.expanduser("~/Downloads")
+    save_dir = str(CLOUD_DIR)  # Save to ~/CloudDrop/ so it's downloadable via HTTP
     threading.Thread(target=_client_thread, args=(ip, port, save_dir), daemon=True).start()
     return jsonify({'ok': True})
 
@@ -575,10 +592,12 @@ def _client_thread(ip, port, save_dir):
             add_log("✅ File received and decrypted!", 'success')
             _set_metrics(met)
             p = m.get('save_path', '')
+            fname = os.path.basename(p)
             with lock:
                 state['result'] = {
                     'title': 'File Received!',
-                    'detail': f"📄 {os.path.basename(p)}<br>📁 {p}<br>📦 {m.get('file_size',0):,} bytes<br>✅ Integrity verified"
+                    'detail': f"📄 {fname}<br>📦 {m.get('file_size',0):,} bytes<br>✅ Integrity verified",
+                    'download_url': f'/api/download/{fname}'
                 }
         else:
             add_log("❌ Receive failed!", 'error')

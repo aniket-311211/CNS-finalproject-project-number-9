@@ -17,6 +17,7 @@ A secure file sharing application built entirely from scratch in Python. This pr
 - [Module Details](#module-details)
 - [Performance Metrics](#performance-metrics)
 - [Screenshots](#screenshots)
+- [Update — Mobile Transfer](#update--mobile-phone--laptop-transfer)
 - [Author](#author)
 
 ---
@@ -31,6 +32,9 @@ A secure file sharing application built entirely from scratch in Python. This pr
 - **Performance Metrics** — Measures encryption time, key exchange time, transfer speed, and file sizes
 - **Integrity Verification** — Validates that decrypted file matches the original size
 - **LAN Support** — Works on both localhost and across local network
+- **📱 Mobile Transfer** — Phone ↔ laptop file transfer via browser; QR code for instant phone access
+- **📁 Files Tab** — Shared file hub: upload from phone, download to any device on the network
+- **Large File Support** — Socket timeout disabled post-connection so large files don't stall DES encryption
 
 ---
 
@@ -40,10 +44,10 @@ A secure file sharing application built entirely from scratch in Python. This pr
 ┌─────────────────────────────────────────────────────┐
 │              app.py (Web GUI Layer — Flask)           │
 │         CloudDrop UI — Browser-based Interface        │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────┐  │
-│  │  Transfer    │  │   Receive    │  │    Log    │  │
-│  │  (Send File) │  │ (Get File)   │  │  Metrics  │  │
-│  └──────┬───────┘  └──────┬───────┘  └───────────┘  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────┐  ┌───────────┐  │
+│  │  Transfer    │  │   Receive    │  │  Files   │  │    Log    │  │
+│  │  (Send File) │  │ (Get File)   │  │  + QR    │  │  Metrics  │  │
+│  └──────┬───────┘  └──────┬───────┘  └──────────┘  └───────────┘  │
 └─────────┼─────────────────┼─────────────────────────┘
           │                 │
     ┌─────▼─────┐     ┌─────▼─────┐
@@ -294,6 +298,46 @@ The application automatically measures and displays:
 - The **1024-bit DH prime** provides adequate security for demonstration
 - **SHA-256** key derivation ensures uniform key distribution from the shared secret
 - No authentication mechanism — vulnerable to MITM (educational scope)
+
+---
+
+## 🆕 Update — Mobile Phone ↔ Laptop Transfer
+
+> **Added after core project completion** — extending CloudDrop to support seamless cross-device file sharing over a local hotspot/WiFi network.
+
+### What Changed
+
+| Component | Change |
+|-----------|--------|
+| `app.py` | Added `/api/direct-upload`, `/api/download`, `/api/files`, `/api/qr` endpoints |
+| `app.py` | Added **Files tab** — upload zone, file card list, download buttons |
+| `app.py` | Added **QR code** on Transfer + Files tabs for instant phone access |
+| `app.py` | Fixed IP detection to correctly resolve hotspot LAN IP (not `127.0.0.1`) |
+| `app.py` | Received files now saved to `~/CloudDrop/` and served via HTTP download |
+| `network.py` | Removed socket timeout post-connection — fixes large file transfers stalling during DES encryption |
+| `requirements.txt` | Added `qrcode[pil]`, `flask-socketio`, `pillow` |
+
+### New Workflow
+
+```
+📱 Phone Browser ────────────── WiFi / Hotspot ──────────────── 💻 Laptop (Flask :8080)
+     │                                                                    │
+     │  Scan QR code  ──────────────────────────────────────────→  /api/qr
+     │                                                                    │
+     │  Upload file   ──── POST /api/direct-upload ──────────────→  ~/CloudDrop/
+     │                                                                    │
+     │  Browse files  ──── GET  /api/files         ──────────────→  JSON list
+     │                                                                    │
+     │  Download file ──── GET  /api/download/<f>  ──────────────→  File stream
+```
+
+### How to Use the Mobile Transfer
+
+1. Connect your phone and laptop to the **same network** (phone hotspot works)
+2. Run `python3 app.py` on the laptop
+3. Open `http://<laptop-IP>:8080` on your phone, or scan the **QR code** on the Transfer tab
+4. **Phone → Laptop:** Files tab → tap upload zone → pick file → DES-encrypted & saved to `~/CloudDrop/`
+5. **Laptop → Phone:** Transfer tab → send file → switch to Files tab on phone → tap ⬇ Download
 
 ---
 
