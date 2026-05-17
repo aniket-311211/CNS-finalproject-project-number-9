@@ -76,6 +76,7 @@ A secure file sharing application built entirely from scratch in Python. This pr
 | Key Exchange | Diffie-Hellman (implemented from scratch) |
 | Networking | Python `socket` (TCP) |
 | GUI | Flask (web-based, CloudDrop design with Manrope font) |
+| Mobile Access | QR Code (scan to connect from phone) |
 | Hashing | SHA-256 (for DES key derivation) |
 
 ---
@@ -89,6 +90,7 @@ CNS Final Project/
 ├── des.py              # Full DES algorithm from scratch
 ├── diffie_hellman.py   # Diffie-Hellman key exchange
 ├── network.py          # TCP socket networking (Host/Client)
+├── requirements.txt    # Python dependencies
 └── README.md           # This file
 ```
 
@@ -138,7 +140,7 @@ Each message follows: `[1 byte type][4 bytes length][payload]`
 ### Prerequisites
 
 - Python 3.6 or higher
-- Flask (`pip3 install flask`)
+- Install dependencies: `pip3 install -r requirements.txt`
 
 ### Running the Application
 
@@ -165,6 +167,14 @@ python3 app.py
 3. Enter the host's **IP address** and **port**
 4. Click **"Start Transfer"** to connect and receive
 5. File is saved to `~/Downloads` with a confirmation popup
+
+### 📱 Phone ↔ Laptop Transfer (Files Tab)
+
+1. Run `python3 app.py` on your laptop
+2. Scan the **QR code** on the Transfer tab with your phone
+3. On your phone browser, click the **📁 Files** tab
+4. **Upload from phone** → tap the upload zone → pick a file → it's DES-encrypted and saved to `~/CloudDrop/`
+5. **Download to phone** → tap the **⬇ Download** button next to any file
 
 ### Self-Tests
 
