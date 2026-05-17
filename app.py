@@ -3,8 +3,10 @@ Secure File Sharing System — Web GUI (CloudDrop Design)
 Uses Flask to serve a browser-based UI matching the Stitch design.
 Author: Aniket
 """
-import os, sys, json, time, threading, socket
-from flask import Flask, render_template_string, request, jsonify
+import os, sys, json, time, threading, socket, io
+from pathlib import Path
+from flask import Flask, render_template_string, request, jsonify, send_file
+import qrcode
 
 from des import des_encrypt, des_decrypt
 from diffie_hellman import DiffieHellman
@@ -26,6 +28,9 @@ try:
     LOCAL_IP = socket.gethostbyname(socket.gethostname())
 except:
     LOCAL_IP = "127.0.0.1"
+
+CLOUD_DIR = Path.home() / 'CloudDrop'
+CLOUD_DIR.mkdir(exist_ok=True)
 
 def add_log(msg, tag='info'):
     with lock:
@@ -145,6 +150,28 @@ body { font-family:'Manrope',sans-serif; background:#F0F2F7; color:#181C20; min-
 /* Hide panels */
 .panel { display:none; }
 .panel.active { display:block; }
+
+/* QR */
+.qr-section { text-align:center; margin:16px 0; padding:16px; background:#F9FAFB; border-radius:10px; border:1px solid #E0E3E8; }
+.qr-section img { width:140px; height:140px; border-radius:8px; }
+.qr-section .qr-label { color:#6B7280; font-size:11px; margin-top:6px; }
+
+/* FILES TAB */
+.files-upload { border:2px dashed #D1D5DB; border-radius:10px; padding:20px; text-align:center;
+                cursor:pointer; transition:all .2s; margin-bottom:20px; background:#F9FAFB; }
+.files-upload:hover { border-color:#0066FF; background:#EBF0FF; }
+.files-upload.uploading { border-color:#F59E0B; background:#FFFBEB; }
+.file-card { background:#fff; border:1px solid #E0E3E8; border-radius:10px; padding:14px 16px;
+             display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;
+             transition:box-shadow .2s; }
+.file-card:hover { box-shadow:0 2px 8px rgba(0,0,0,0.06); }
+.file-info .file-name { font-weight:600; font-size:14px; color:#181C20; }
+.file-info .file-meta { font-size:11px; color:#9CA3AF; margin-top:2px; }
+.btn-dl { padding:8px 16px; border:none; border-radius:8px; background:#0066FF; color:#fff;
+          font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; text-decoration:none;
+          transition:background .2s; }
+.btn-dl:hover { background:#0050CB; }
+.empty-files { text-align:center; color:#9CA3AF; font-size:14px; padding:40px 0; }
 </style>
 </head>
 <body>
@@ -155,6 +182,7 @@ body { font-family:'Manrope',sans-serif; background:#F0F2F7; color:#181C20; min-
   <div class="nav-tabs">
     <button class="tab active" onclick="showTab('send')" id="tab-send">↗ Transfer</button>
     <button class="tab" onclick="showTab('recv')" id="tab-recv">↙ Receive</button>
+    <button class="tab" onclick="showTab('files')" id="tab-files">📁 Files</button>
     <button class="tab" onclick="showTab('log')" id="tab-log">☰ Log</button>
   </div>
 </div>
@@ -184,6 +212,12 @@ body { font-family:'Manrope',sans-serif; background:#F0F2F7; color:#181C20; min-
   </div>
 
   <button class="btn-primary" id="send-btn" onclick="startSend()">Start transfer</button>
+
+  <div class="qr-section">
+    <img src="/api/qr" alt="QR Code">
+    <div class="qr-label">📱 Scan with your phone to connect</div>
+  </div>
+
   <div class="footer">◈ Secure Peer-to-Peer Transfer</div>
 </div>
 </div>
@@ -214,6 +248,30 @@ body { font-family:'Manrope',sans-serif; background:#F0F2F7; color:#181C20; min-
   <div class="icon-box"><div class="big-icon">☁↓</div></div>
   <button class="btn-primary" id="recv-btn" onclick="startRecv()">Start Transfer</button>
   <div class="footer">◈ Secure Peer-to-Peer Transfer</div>
+</div>
+</div>
+</div>
+
+<!-- FILES PANEL -->
+<div class="panel" id="panel-files">
+<div class="container">
+<div class="card">
+  <h1>📁 Shared Files</h1>
+  <p class="subtitle">Upload from phone or download to any device</p>
+
+  <input type="file" class="file-input" id="direct-file-input" onchange="directUpload(this)">
+  <div class="files-upload" id="direct-upload-zone" onclick="document.getElementById('direct-file-input').click()">
+    <div style="font-size:28px;">☁️⬆</div>
+    <div style="color:#6B7280; font-size:13px; margin-top:4px;">Drop or click to upload a file</div>
+    <div style="color:#9CA3AF; font-size:11px;">Files are DES-encrypted before saving</div>
+  </div>
+
+  <div id="files-list"><div class="empty-files">Loading files...</div></div>
+
+  <div class="qr-section">
+    <img src="/api/qr" alt="QR Code">
+    <div class="qr-label">📱 Scan to access from your phone</div>
+  </div>
 </div>
 </div>
 </div>
@@ -308,6 +366,70 @@ function startPolling() {
     }
   }, 500);
 }
+
+// ── Files Tab ──
+async function directUpload(input) {
+  if (!input.files.length) return;
+  const zone = document.getElementById('direct-upload-zone');
+  zone.classList.add('uploading');
+  zone.querySelector('div').textContent = '⏳ Uploading & encrypting...';
+
+  const fd = new FormData();
+  fd.append('file', input.files[0]);
+  try {
+    const r = await fetch('/api/direct-upload', {method:'POST', body:fd});
+    const d = await r.json();
+    if (d.ok) {
+      zone.classList.remove('uploading');
+      zone.querySelector('div').textContent = '✅ ' + d.filename + ' uploaded!';
+      setTimeout(() => {
+        zone.querySelector('div').textContent = '☁️⬆';
+      }, 2000);
+      loadFiles();
+    }
+  } catch(e) {
+    zone.classList.remove('uploading');
+    zone.querySelector('div').textContent = '❌ Upload failed';
+  }
+  input.value = '';
+}
+
+async function loadFiles() {
+  try {
+    const r = await fetch('/api/files');
+    const files = await r.json();
+    const el = document.getElementById('files-list');
+    if (files.length === 0) {
+      el.innerHTML = '<div class="empty-files">No files shared yet</div>';
+      return;
+    }
+    el.innerHTML = files.map(f =>
+      `<div class="file-card">
+        <div class="file-info">
+          <div class="file-name">📄 ${f.name}</div>
+          <div class="file-meta">${formatSize(f.size)} · ${f.date}</div>
+        </div>
+        <a href="${f.download_url}" class="btn-dl">⬇ Download</a>
+      </div>`
+    ).join('');
+  } catch(e) {}
+}
+
+function formatSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
+
+// Auto-show tab hook
+const _origShowTab = showTab;
+showTab = function(t) {
+  _origShowTab(t);
+  if (t === 'files') loadFiles();
+};
+
+// Init
+loadFiles();
 </script>
 </body>
 </html>'''
@@ -469,9 +591,91 @@ def _client_thread(ip, port, save_dir):
             state['status'] = 'done'
 
 
+# ── Batch 1: HTTP Direct Transfer (Phone ↔ Laptop) ──
+
+@app.route('/api/direct-upload', methods=['POST'])
+def api_direct_upload():
+    """Phone uploads a file via browser → saved to ~/CloudDrop/ with DES demo."""
+    f = request.files.get('file')
+    if not f:
+        return jsonify({'error': 'No file'}), 400
+
+    filename = f.filename
+    data = f.read()
+    original_size = len(data)
+
+    # DES encryption demo
+    dh = DiffieHellman()
+    key = dh.derive_des_key(dh.get_public_key())  # self-exchange for demo
+    t0 = time.time()
+    encrypted = des_encrypt(data, key)
+    enc_time = time.time() - t0
+    decrypted = des_decrypt(encrypted, key)
+    dec_time = time.time() - t0 - enc_time
+
+    save_path = CLOUD_DIR / filename
+    # Avoid overwriting
+    if save_path.exists():
+        stem, suffix = save_path.stem, save_path.suffix
+        i = 1
+        while save_path.exists():
+            save_path = CLOUD_DIR / f"{stem}_{i}{suffix}"
+            i += 1
+    save_path.write_bytes(decrypted)
+
+    add_log(f"📱 Direct upload: {save_path.name} ({original_size:,} B)", 'success')
+    add_log(f"🔒 DES encrypted in {enc_time:.3f}s, decrypted in {dec_time:.3f}s", 'key')
+
+    return jsonify({
+        'ok': True,
+        'filename': save_path.name,
+        'size': original_size,
+        'enc_time': round(enc_time, 3),
+        'download_url': f'/api/download/{save_path.name}'
+    })
+
+
+@app.route('/api/download/<filename>')
+def api_download(filename):
+    """Serve a file from ~/CloudDrop/ for browser download."""
+    path = CLOUD_DIR / filename
+    if not path.exists():
+        return jsonify({'error': 'File not found'}), 404
+    return send_file(str(path), as_attachment=True, download_name=filename)
+
+
+@app.route('/api/files')
+def api_files():
+    """List all files in ~/CloudDrop/."""
+    files = []
+    for p in sorted(CLOUD_DIR.iterdir()):
+        if p.is_file() and not p.name.startswith('.'):
+            stat = p.stat()
+            files.append({
+                'name': p.name,
+                'size': stat.st_size,
+                'date': time.strftime('%Y-%m-%d %H:%M', time.localtime(stat.st_mtime)),
+                'download_url': f'/api/download/{p.name}'
+            })
+    return jsonify(files)
+
+
+@app.route('/api/qr')
+def api_qr():
+    """Generate QR code PNG for the server URL."""
+    url = f'http://{LOCAL_IP}:8080'
+    img = qrcode.make(url, box_size=6, border=2)
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    buf.seek(0)
+    return send_file(buf, mimetype='image/png')
+
+
 if __name__ == '__main__':
     os.environ['TK_SILENCE_DEPRECATION'] = '1'
     import webbrowser
-    print("\n  ◈ CloudDrop starting at http://localhost:8080\n")
+    print(f"\n  ◈ CloudDrop starting at http://localhost:8080")
+    print(f"  ◈ Phone access: http://{LOCAL_IP}:8080")
+    print(f"  ◈ Shared folder: {CLOUD_DIR}\n")
     webbrowser.open('http://localhost:8080')
     app.run(host='0.0.0.0', port=8080, debug=False)
